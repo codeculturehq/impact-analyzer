@@ -235,7 +235,7 @@ async function callGemini(prompt: string, options: EnhanceOptions): Promise<stri
 
 /**
  * Call GitHub Models API (uses GITHUB_TOKEN, no extra API key needed)
- * Uses OpenAI-compatible API endpoint
+ * API docs: https://docs.github.com/en/rest/models/inference
  */
 async function callGitHubModels(prompt: string, options: EnhanceOptions): Promise<string> {
   const token = options.apiKey || process.env['GITHUB_TOKEN'];
@@ -243,14 +243,22 @@ async function callGitHubModels(prompt: string, options: EnhanceOptions): Promis
     throw new Error('GITHUB_TOKEN environment variable is required for GitHub Models');
   }
 
+  // Model format: {publisher}/{model_name}
   // Default to GPT-4o - the best available model on GitHub Models
-  const model = options.model || 'gpt-4o';
+  let model = options.model || 'openai/gpt-4o';
 
-  const response = await fetch('https://models.inference.ai.azure.com/chat/completions', {
+  // Auto-prefix with 'openai/' if not already prefixed
+  if (!model.includes('/')) {
+    model = `openai/${model}`;
+  }
+
+  const response = await fetch('https://models.github.ai/inference/chat/completions', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      'Accept': 'application/vnd.github+json',
       'Authorization': `Bearer ${token}`,
+      'X-GitHub-Api-Version': '2022-11-28',
     },
     body: JSON.stringify({
       model,
