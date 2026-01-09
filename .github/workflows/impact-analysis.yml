@@ -21,6 +21,7 @@ permissions:
   contents: read
   pull-requests: write
   checks: write
+  models: read  # Required for GitHub Models LLM integration
 
 jobs:
   impact-analysis:
@@ -58,7 +59,7 @@ jobs:
           cache-dependency-path: main-repo/package-lock.json
 
       - name: Install impact-analyzer
-        run: npm install -g @codeculture/impact-analyzer
+        run: npm install -g @codeculturehq/impact-analyzer
 
       - name: Determine refs
         id: refs

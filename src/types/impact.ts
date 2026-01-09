@@ -9,7 +9,7 @@
 export type RepoType = 'angular' | 'react' | 'vue' | 'nextjs' | 'graphql-node' | 'go' | 'node';
 export type AnalyzerType = 'nx' | 'ts-morph' | 'madge' | 'graphql-inspector' | 'go-ast';
 export type RelationType = 'graphql-schema' | 'sqs' | 'shared-types' | 'api-call' | 'npm-package';
-export type LLMProvider = 'claude' | 'codex' | 'gemini';
+export type LLMProvider = 'claude' | 'codex' | 'gemini' | 'github-models';
 
 export interface RepoConfig {
   /** Repository name (used for identification) */

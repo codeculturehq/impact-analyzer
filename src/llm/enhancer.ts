@@ -69,6 +69,9 @@ async function generateTestHints(
       case 'gemini':
         response = await callGemini(prompt, options);
         break;
+      case 'github-models':
+        response = await callGitHubModels(prompt, options);
+        break;
       default:
         throw new Error(`Unknown LLM provider: ${options.provider}`);
     }
@@ -228,4 +231,39 @@ async function callGemini(prompt: string, options: EnhanceOptions): Promise<stri
     candidates: Array<{ content: { parts: Array<{ text: string }> } }>;
   };
   return data.candidates[0]?.content?.parts[0]?.text || '';
+}
+
+/**
+ * Call GitHub Models API (uses GITHUB_TOKEN, no extra API key needed)
+ * Uses OpenAI-compatible API endpoint
+ */
+async function callGitHubModels(prompt: string, options: EnhanceOptions): Promise<string> {
+  const token = options.apiKey || process.env['GITHUB_TOKEN'];
+  if (!token) {
+    throw new Error('GITHUB_TOKEN environment variable is required for GitHub Models');
+  }
+
+  // Default to GPT-4o - the best available model on GitHub Models
+  const model = options.model || 'gpt-4o';
+
+  const response = await fetch('https://models.inference.ai.azure.com/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: options.maxTokens || 1024,
+      messages: [{ role: 'user', content: prompt }],
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`GitHub Models API error: ${error}`);
+  }
+
+  const data = await response.json() as { choices: Array<{ message: { content: string } }> };
+  return data.choices[0]?.message?.content || '';
 }
