@@ -146,20 +146,6 @@ function getModel(options: EnhanceOptions) {
       return google(model || 'gemini-2.0-flash');
     }
 
-    case 'github-models': {
-      // GitHub Models uses OpenAI-compatible API
-      const github = createOpenAI({
-        baseURL: 'https://models.github.ai/inference',
-        apiKey: apiKey || process.env['GITHUB_TOKEN'],
-      });
-      // Model format: {publisher}/{model_name}
-      let modelId = model || 'openai/gpt-4.1';
-      if (!modelId.includes('/')) {
-        modelId = `openai/${modelId}`;
-      }
-      return github(modelId);
-    }
-
     default:
       throw new Error(`Unknown LLM provider: ${provider}`);
   }

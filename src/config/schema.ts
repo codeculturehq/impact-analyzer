@@ -30,7 +30,7 @@ export const RelationTypeSchema = z.enum([
   'npm-package',
 ]);
 
-export const LLMProviderSchema = z.enum(['openai', 'claude', 'gemini', 'github-models']);
+export const LLMProviderSchema = z.enum(['openai', 'claude', 'gemini']);
 
 export const RepoConfigSchema = z.object({
   name: z.string().min(1, 'Repository name is required'),

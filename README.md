@@ -104,7 +104,7 @@ impact enhance [options]
 Options:
   -i, --input <file>       Input JSON file from analyze step (required)
   -o, --output <file>      Output file path (default: ./impact-output/enhanced.json)
-  -p, --provider <name>    LLM provider: openai, claude, gemini, github-models (default: openai)
+  -p, --provider <name>    LLM provider: openai, claude, gemini (default: openai)
   -m, --model <name>       Model name (e.g., gpt-5.1-codex, claude-sonnet-4-20250514)
   --no-secrets-filter      Disable secrets filtering
 ```
@@ -136,7 +136,6 @@ The `enhance` command uses AI to analyze each impacted component and suggest spe
 | `openai` | `gpt-5.1-codex` | `OPENAI_API_KEY` |
 | `claude` | `claude-sonnet-4-20250514` | `ANTHROPIC_API_KEY` |
 | `gemini` | `gemini-2.0-flash` | `GOOGLE_API_KEY` |
-| `github-models` | `openai/gpt-4.1` | `GITHUB_TOKEN` |
 
 ### Example Usage
 
@@ -149,11 +148,12 @@ impact enhance -i impact.json
 export ANTHROPIC_API_KEY="sk-ant-..."
 impact enhance -i impact.json --provider claude
 
+# Using Gemini
+export GOOGLE_API_KEY="..."
+impact enhance -i impact.json --provider gemini
+
 # Using a specific model
 impact enhance -i impact.json --provider openai --model gpt-4o
-
-# Using GitHub Models (free with GitHub token)
-impact enhance -i impact.json --provider github-models
 ```
 
 ### Output Format
