@@ -60,7 +60,7 @@ jobs:
           node-version: '20'
           cache: 'npm'
           registry-url: 'https://npm.pkg.github.com'
-          scope: '@codeculture'
+          scope: '@codeculturehq'
 
       - name: Install dependencies
         run: npm ci

@@ -1,5 +1,5 @@
 {
-  "name": "@codeculture/impact-analyzer",
+  "name": "@codeculturehq/impact-analyzer",
   "version": "0.1.0",
   "description": "Cross-repo impact analyzer for multi-repo setups - detects affected components across repositories",
   "type": "module",
