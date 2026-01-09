@@ -244,8 +244,8 @@ async function callGitHubModels(prompt: string, options: EnhanceOptions): Promis
   }
 
   // Model format: {publisher}/{model_name}
-  // Default to GPT-4o - the best available model on GitHub Models
-  let model = options.model || 'openai/gpt-4o';
+  // Default to GPT-5 - the best available model on GitHub Models
+  let model = options.model || 'openai/gpt-5';
 
   // Auto-prefix with 'openai/' if not already prefixed
   if (!model.includes('/')) {
