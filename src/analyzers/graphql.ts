@@ -1,5 +1,6 @@
 import { execa } from 'execa';
 import { existsSync } from 'node:fs';
+import { writeFile, mkdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { BaseAnalyzer } from './base.js';
 import type { ImpactItem, RepoConfig } from '../types/index.js';
@@ -132,15 +133,15 @@ export class GraphQLAnalyzer extends BaseAnalyzer {
         return [];
       }
 
-      // Write temp files for comparison
-      const tempDir = '/tmp/impact-graphql';
-      await execa('mkdir', ['-p', tempDir]);
+      // Write temp files for comparison (use Node.js fs to handle large schemas)
+      const tempDir = `/tmp/impact-graphql-${Date.now()}`;
+      await mkdir(tempDir, { recursive: true });
 
       const oldPath = `${tempDir}/old.graphql`;
       const newPath = `${tempDir}/new.graphql`;
 
-      await execa('bash', ['-c', `cat > ${oldPath} << 'SCHEMA'\n${oldSchema}\nSCHEMA`]);
-      await execa('bash', ['-c', `cat > ${newPath} << 'SCHEMA'\n${newSchema}\nSCHEMA`]);
+      await writeFile(oldPath, oldSchema, 'utf-8');
+      await writeFile(newPath, newSchema, 'utf-8');
 
       // Run graphql-inspector diff
       try {
@@ -178,7 +179,7 @@ export class GraphQLAnalyzer extends BaseAnalyzer {
       }
 
       // Cleanup
-      await execa('rm', ['-rf', tempDir]);
+      await rm(tempDir, { recursive: true, force: true });
 
     } catch (error) {
       console.warn(`GraphQL schema analysis failed: ${error}`);
