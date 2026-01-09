@@ -45,6 +45,9 @@
     "url": "https://github.com/codeculturehq/impact-analyzer/issues"
   },
   "homepage": "https://github.com/codeculturehq/impact-analyzer#readme",
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
   "engines": {
     "node": ">=20"
   },
