@@ -30,7 +30,7 @@ export const RelationTypeSchema = z.enum([
   'npm-package',
 ]);
 
-export const LLMProviderSchema = z.enum(['claude', 'codex', 'gemini']);
+export const LLMProviderSchema = z.enum(['openai', 'claude', 'codex', 'gemini', 'github-models']);
 
 export const RepoConfigSchema = z.object({
   name: z.string().min(1, 'Repository name is required'),
@@ -61,7 +61,7 @@ export const OutputConfigSchema = z.object({
 
 export const LLMConfigSchema = z.object({
   enabled: z.boolean().default(false),
-  provider: LLMProviderSchema.default('claude'),
+  provider: LLMProviderSchema.default('openai'),
   model: z.string().optional(),
   maxTokens: z.number().positive().optional(),
   secretsFilter: z.boolean().default(true),

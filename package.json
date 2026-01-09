@@ -1,6 +1,6 @@
 {
   "name": "@codeculturehq/impact-analyzer",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Cross-repo impact analyzer for multi-repo setups - detects affected components across repositories",
   "type": "module",
   "bin": {
@@ -52,9 +52,11 @@
     "node": ">=20"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^3.0.7",
     "@graphql-inspector/core": "^5.0.0",
     "@octokit/rest": "^21.0.0",
     "@slack/web-api": "^7.0.0",
+    "ai": "^6.0.24",
     "chalk": "^5.3.0",
     "commander": "^12.1.0",
     "execa": "^9.5.0",
@@ -66,10 +68,10 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
-    "typescript": "^5.7.0",
-    "vitest": "^2.1.0",
-    "eslint": "^9.0.0",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
-    "@typescript-eslint/parser": "^8.0.0"
+    "@typescript-eslint/parser": "^8.0.0",
+    "eslint": "^9.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
   }
 }

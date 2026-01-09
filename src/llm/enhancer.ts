@@ -1,3 +1,5 @@
+import { generateText } from 'ai';
+import { createOpenAI } from '@ai-sdk/openai';
 import type { AnalysisResult, ImpactItem, LLMProvider } from '../types/index.js';
 import { filterAnalysisResult } from './secrets-filter.js';
 
@@ -48,6 +50,49 @@ export async function enhanceWithLLM(
 }
 
 /**
+ * Get the AI SDK model based on provider and options
+ */
+function getModel(options: EnhanceOptions) {
+  const { provider, apiKey, model } = options;
+
+  switch (provider) {
+    case 'openai': {
+      const openai = createOpenAI({
+        apiKey: apiKey || process.env['OPENAI_API_KEY'],
+      });
+      return openai(model || 'gpt-5.1-codex');
+    }
+
+    case 'github-models': {
+      // GitHub Models uses OpenAI-compatible API
+      const github = createOpenAI({
+        baseURL: 'https://models.github.ai/inference',
+        apiKey: apiKey || process.env['GITHUB_TOKEN'],
+      });
+      // Model format: {publisher}/{model_name}
+      let modelId = model || 'openai/gpt-4.1';
+      if (!modelId.includes('/')) {
+        modelId = `openai/${modelId}`;
+      }
+      return github(modelId);
+    }
+
+    case 'claude': {
+      // For Claude, fall back to raw fetch (AI SDK requires @ai-sdk/anthropic)
+      throw new Error('Claude provider requires @ai-sdk/anthropic - install it or use openai/github-models');
+    }
+
+    case 'gemini': {
+      // For Gemini, fall back to raw fetch (AI SDK requires @ai-sdk/google)
+      throw new Error('Gemini provider requires @ai-sdk/google - install it or use openai/github-models');
+    }
+
+    default:
+      throw new Error(`Unknown LLM provider: ${provider}`);
+  }
+}
+
+/**
  * Generate test hints for an impact item using LLM
  */
 async function generateTestHints(
@@ -57,26 +102,15 @@ async function generateTestHints(
   const prompt = buildPrompt(impact);
 
   try {
-    let response: string;
+    const model = getModel(options);
 
-    switch (options.provider) {
-      case 'claude':
-        response = await callClaude(prompt, options);
-        break;
-      case 'codex':
-        response = await callCodex(prompt, options);
-        break;
-      case 'gemini':
-        response = await callGemini(prompt, options);
-        break;
-      case 'github-models':
-        response = await callGitHubModels(prompt, options);
-        break;
-      default:
-        throw new Error(`Unknown LLM provider: ${options.provider}`);
-    }
+    const { text } = await generateText({
+      model,
+      prompt,
+      maxOutputTokens: options.maxTokens || 1024,
+    });
 
-    return parseTestHints(response);
+    return parseTestHints(text);
   } catch (error) {
     console.warn(`Failed to generate test hints for ${impact.component}: ${error}`);
     return [];
@@ -126,152 +160,4 @@ function parseTestHints(response: string): string[] {
   }
 
   return hints.slice(0, 5); // Max 5 hints per impact
-}
-
-/**
- * Call Claude API
- */
-async function callClaude(prompt: string, options: EnhanceOptions): Promise<string> {
-  const apiKey = options.apiKey || process.env['ANTHROPIC_API_KEY'];
-  if (!apiKey) {
-    throw new Error('ANTHROPIC_API_KEY environment variable is required for Claude');
-  }
-
-  const model = options.model || 'claude-3-5-sonnet-latest';
-
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: options.maxTokens || 1024,
-      messages: [{ role: 'user', content: prompt }],
-    }),
-  });
-
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Claude API error: ${error}`);
-  }
-
-  const data = await response.json() as { content: Array<{ text: string }> };
-  return data.content[0]?.text || '';
-}
-
-/**
- * Call OpenAI Codex/GPT API
- */
-async function callCodex(prompt: string, options: EnhanceOptions): Promise<string> {
-  const apiKey = options.apiKey || process.env['OPENAI_API_KEY'];
-  if (!apiKey) {
-    throw new Error('OPENAI_API_KEY environment variable is required for Codex');
-  }
-
-  const model = options.model || 'gpt-4o';
-
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: options.maxTokens || 1024,
-      messages: [{ role: 'user', content: prompt }],
-    }),
-  });
-
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`OpenAI API error: ${error}`);
-  }
-
-  const data = await response.json() as { choices: Array<{ message: { content: string } }> };
-  return data.choices[0]?.message?.content || '';
-}
-
-/**
- * Call Google Gemini API
- */
-async function callGemini(prompt: string, options: EnhanceOptions): Promise<string> {
-  const apiKey = options.apiKey || process.env['GOOGLE_API_KEY'];
-  if (!apiKey) {
-    throw new Error('GOOGLE_API_KEY environment variable is required for Gemini');
-  }
-
-  const model = options.model || 'gemini-1.5-flash';
-
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          maxOutputTokens: options.maxTokens || 1024,
-        },
-      }),
-    }
-  );
-
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Gemini API error: ${error}`);
-  }
-
-  const data = await response.json() as {
-    candidates: Array<{ content: { parts: Array<{ text: string }> } }>;
-  };
-  return data.candidates[0]?.content?.parts[0]?.text || '';
-}
-
-/**
- * Call GitHub Models API (uses GITHUB_TOKEN, no extra API key needed)
- * API docs: https://docs.github.com/en/rest/models/inference
- */
-async function callGitHubModels(prompt: string, options: EnhanceOptions): Promise<string> {
-  const token = options.apiKey || process.env['GITHUB_TOKEN'];
-  if (!token) {
-    throw new Error('GITHUB_TOKEN environment variable is required for GitHub Models');
-  }
-
-  // Model format: {publisher}/{model_name}
-  // Default to GPT-5 - the best available model on GitHub Models
-  let model = options.model || 'openai/gpt-5';
-
-  // Auto-prefix with 'openai/' if not already prefixed
-  if (!model.includes('/')) {
-    model = `openai/${model}`;
-  }
-
-  const response = await fetch('https://models.github.ai/inference/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Accept': 'application/vnd.github+json',
-      'Authorization': `Bearer ${token}`,
-      'X-GitHub-Api-Version': '2022-11-28',
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: options.maxTokens || 1024,
-      messages: [{ role: 'user', content: prompt }],
-    }),
-  });
-
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`GitHub Models API error: ${error}`);
-  }
-
-  const data = await response.json() as { choices: Array<{ message: { content: string } }> };
-  return data.choices[0]?.message?.content || '';
 }

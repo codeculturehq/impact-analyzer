@@ -68,7 +68,7 @@ function createProgram(): Command {
     .description('Enhance impact analysis with LLM-generated test hints')
     .requiredOption('-i, --input <file>', 'Input JSON file from analyze step')
     .option('-o, --output <file>', 'Output file path', './impact-output/enhanced.json')
-    .option('-p, --provider <provider>', 'LLM provider (claude, codex, gemini)', 'claude')
+    .option('-p, --provider <provider>', 'LLM provider (openai, claude, gemini, github-models)', 'openai')
     .option('--no-secrets-filter', 'Disable secrets filtering')
     .action(async (options: CLIEnhanceOptions & { secretsFilter?: boolean }) => {
       await runEnhance(options);
