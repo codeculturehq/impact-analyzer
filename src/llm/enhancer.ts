@@ -1,5 +1,7 @@
 import { generateText } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
+import { createAnthropic } from '@ai-sdk/anthropic';
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import type { AnalysisResult, ImpactItem, LLMProvider } from '../types/index.js';
 import { filterAnalysisResult } from './secrets-filter.js';
 
@@ -9,11 +11,53 @@ export interface EnhanceOptions {
   apiKey?: string;
   maxTokens?: number;
   secretsFilter?: boolean;
+  /** Maximum concurrent API calls (default: 3) */
+  concurrency?: number;
+  /** Delay between API calls in ms (default: 100) */
+  delayMs?: number;
 }
 
 export interface EnhancedResult extends AnalysisResult {
   enhanced: boolean;
   llmProvider: LLMProvider;
+}
+
+/**
+ * Simple rate limiter using a semaphore pattern
+ */
+class RateLimiter {
+  private running = 0;
+  private queue: Array<() => void> = [];
+
+  constructor(
+    private maxConcurrent: number,
+    private delayMs: number
+  ) {}
+
+  async acquire(): Promise<void> {
+    if (this.running < this.maxConcurrent) {
+      this.running++;
+      return;
+    }
+
+    return new Promise((resolve) => {
+      this.queue.push(resolve);
+    });
+  }
+
+  async release(): Promise<void> {
+    // Add delay between releases to avoid bursts
+    if (this.delayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, this.delayMs));
+    }
+
+    this.running--;
+    const next = this.queue.shift();
+    if (next) {
+      this.running++;
+      next();
+    }
+  }
 }
 
 /**
@@ -28,18 +72,43 @@ export async function enhanceWithLLM(
     ? filterAnalysisResult(result)
     : result;
 
-  // Generate test hints for each impact
-  const enhancedRepos = await Promise.all(
-    filteredResult.repos.map(async (repo) => ({
-      ...repo,
-      impacts: await Promise.all(
-        repo.impacts.map(async (impact) => ({
-          ...impact,
-          testHints: await generateTestHints(impact, options),
-        }))
-      ),
-    }))
+  // Create rate limiter (default: 3 concurrent, 100ms delay)
+  const rateLimiter = new RateLimiter(
+    options.concurrency ?? 3,
+    options.delayMs ?? 100
   );
+
+  // Collect all impacts with their repo index for tracking
+  const allImpacts: Array<{ repoIdx: number; impactIdx: number; impact: ImpactItem }> = [];
+  filteredResult.repos.forEach((repo, repoIdx) => {
+    repo.impacts.forEach((impact, impactIdx) => {
+      allImpacts.push({ repoIdx, impactIdx, impact });
+    });
+  });
+
+  // Process all impacts with rate limiting
+  const testHintsMap = new Map<string, string[]>();
+
+  await Promise.all(
+    allImpacts.map(async ({ repoIdx, impactIdx, impact }) => {
+      await rateLimiter.acquire();
+      try {
+        const hints = await generateTestHints(impact, options);
+        testHintsMap.set(`${repoIdx}-${impactIdx}`, hints);
+      } finally {
+        await rateLimiter.release();
+      }
+    })
+  );
+
+  // Reconstruct repos with test hints
+  const enhancedRepos = filteredResult.repos.map((repo, repoIdx) => ({
+    ...repo,
+    impacts: repo.impacts.map((impact, impactIdx) => ({
+      ...impact,
+      testHints: testHintsMap.get(`${repoIdx}-${impactIdx}`) || [],
+    })),
+  }));
 
   return {
     ...filteredResult,
@@ -63,6 +132,20 @@ function getModel(options: EnhanceOptions) {
       return openai(model || 'gpt-5.1-codex');
     }
 
+    case 'claude': {
+      const anthropic = createAnthropic({
+        apiKey: apiKey || process.env['ANTHROPIC_API_KEY'],
+      });
+      return anthropic(model || 'claude-sonnet-4-20250514');
+    }
+
+    case 'gemini': {
+      const google = createGoogleGenerativeAI({
+        apiKey: apiKey || process.env['GOOGLE_API_KEY'],
+      });
+      return google(model || 'gemini-2.0-flash');
+    }
+
     case 'github-models': {
       // GitHub Models uses OpenAI-compatible API
       const github = createOpenAI({
@@ -75,16 +158,6 @@ function getModel(options: EnhanceOptions) {
         modelId = `openai/${modelId}`;
       }
       return github(modelId);
-    }
-
-    case 'claude': {
-      // For Claude, fall back to raw fetch (AI SDK requires @ai-sdk/anthropic)
-      throw new Error('Claude provider requires @ai-sdk/anthropic - install it or use openai/github-models');
-    }
-
-    case 'gemini': {
-      // For Gemini, fall back to raw fetch (AI SDK requires @ai-sdk/google)
-      throw new Error('Gemini provider requires @ai-sdk/google - install it or use openai/github-models');
     }
 
     default:

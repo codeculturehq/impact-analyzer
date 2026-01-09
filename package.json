@@ -22,6 +22,7 @@
     "dev": "tsc --watch",
     "test": "vitest",
     "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build"
@@ -52,11 +53,12 @@
     "node": ">=20"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.9",
+    "@ai-sdk/google": "^3.0.6",
     "@ai-sdk/openai": "^3.0.7",
     "@graphql-inspector/core": "^5.0.0",
     "@octokit/rest": "^21.0.0",
     "@slack/web-api": "^7.0.0",
-    "@vitest/coverage-v8": "^4.0.16",
     "ai": "^6.0.24",
     "chalk": "^5.3.0",
     "commander": "^12.1.0",
@@ -71,6 +73,7 @@
     "@types/node": "^22.0.0",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
+    "@vitest/coverage-v8": "^4.0.16",
     "eslint": "^9.0.0",
     "typescript": "^5.7.0",
     "vitest": "^4.0.16"

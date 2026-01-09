@@ -9,7 +9,7 @@
 export type RepoType = 'angular' | 'react' | 'vue' | 'nextjs' | 'graphql-node' | 'go' | 'node';
 export type AnalyzerType = 'nx' | 'ts-morph' | 'madge' | 'graphql-inspector' | 'go-ast';
 export type RelationType = 'graphql-schema' | 'sqs' | 'shared-types' | 'api-call' | 'npm-package';
-export type LLMProvider = 'openai' | 'claude' | 'codex' | 'gemini' | 'github-models';
+export type LLMProvider = 'openai' | 'claude' | 'gemini' | 'github-models';
 
 export interface RepoConfig {
   /** Repository name (used for identification) */
@@ -188,6 +188,8 @@ export interface EnhanceOptions {
   output: string;
   /** LLM provider */
   provider: LLMProvider;
+  /** Model name (optional, uses provider default) */
+  model?: string;
 }
 
 // ============================================================================

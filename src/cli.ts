@@ -69,6 +69,7 @@ function createProgram(): Command {
     .requiredOption('-i, --input <file>', 'Input JSON file from analyze step')
     .option('-o, --output <file>', 'Output file path', './impact-output/enhanced.json')
     .option('-p, --provider <provider>', 'LLM provider (openai, claude, gemini, github-models)', 'openai')
+    .option('-m, --model <model>', 'Model name (e.g., gpt-5.1-codex, claude-sonnet-4-20250514)')
     .option('--no-secrets-filter', 'Disable secrets filtering')
     .action(async (options: CLIEnhanceOptions & { secretsFilter?: boolean }) => {
       await runEnhance(options);
@@ -441,6 +442,7 @@ async function runEnhance(options: CLIEnhanceOptions & { secretsFilter?: boolean
   try {
     const enhanced = await enhanceWithLLM(result, {
       provider: options.provider as LLMProvider,
+      model: options.model,
       secretsFilter: options.secretsFilter !== false,
     });
 
