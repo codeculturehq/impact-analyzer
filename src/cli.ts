@@ -1,16 +1,19 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
-import { writeFile, mkdir } from 'node:fs/promises';
+import { writeFile, mkdir, readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 import { loadConfig, normalizeConfig, findConfig, ConfigLoadError, ConfigValidationError } from './config/index.js';
-import { AngularAnalyzer } from './analyzers/index.js';
+import { AngularAnalyzer, GraphQLAnalyzer, GoAnalyzer, CrossRepoAnalyzer } from './analyzers/index.js';
+import { enhanceWithLLM } from './llm/index.js';
 import type {
   AnalysisResult,
   AnalyzeOptions,
+  EnhanceOptions as CLIEnhanceOptions,
   ImpactConfig,
   ImpactItem,
+  LLMProvider,
   RepoConfig,
   RepoResult,
 } from './types/index.js';
@@ -57,6 +60,18 @@ function createProgram(): Command {
     .option('-f, --format <format>', 'Config format (yaml or json)', 'yaml')
     .action(async (options: { format: string }) => {
       await initConfig(options.format);
+    });
+
+  // Enhance command - add LLM-generated test hints
+  program
+    .command('enhance')
+    .description('Enhance impact analysis with LLM-generated test hints')
+    .requiredOption('-i, --input <file>', 'Input JSON file from analyze step')
+    .option('-o, --output <file>', 'Output file path', './impact-output/enhanced.json')
+    .option('-p, --provider <provider>', 'LLM provider (claude, codex, gemini)', 'claude')
+    .option('--no-secrets-filter', 'Disable secrets filtering')
+    .action(async (options: CLIEnhanceOptions & { secretsFilter?: boolean }) => {
+      await runEnhance(options);
     });
 
   return program;
@@ -119,6 +134,25 @@ async function runAnalysis(options: AnalyzeOptions): Promise<void> {
     console.log(`   ✅ ${result.changedFiles} changed files, ${result.impacts.length} impacts`);
   }
 
+  // Analyze cross-repo impacts
+  console.log('\n🔗 Analyzing cross-repo impacts...');
+  const crossRepoAnalyzer = new CrossRepoAnalyzer(
+    config.relations,
+    repoResults.map(r => ({ name: r.name, impacts: r.impacts }))
+  );
+  const crossRepoImpacts = crossRepoAnalyzer.analyze();
+  console.log(`   ✅ ${crossRepoImpacts.length} cross-repo impacts found`);
+
+  // Detect breaking changes (schema changes are considered breaking)
+  const hasBreakingChanges = repoResults.some(r =>
+    r.impacts.some(i =>
+      i.reasons.some(reason =>
+        reason.type === 'schema' ||
+        reason.description.toLowerCase().includes('breaking')
+      )
+    )
+  );
+
   // Build analysis result
   const analysisResult: AnalysisResult = {
     meta: {
@@ -131,7 +165,7 @@ async function runAnalysis(options: AnalyzeOptions): Promise<void> {
     summary: {
       totalChangedFiles,
       totalImpactedComponents,
-      hasBreakingChanges: false, // TODO: implement breaking change detection
+      hasBreakingChanges,
       repos: repoResults.map(r => ({
         name: r.name,
         changedFiles: r.changedFiles,
@@ -139,7 +173,7 @@ async function runAnalysis(options: AnalyzeOptions): Promise<void> {
       })),
     },
     repos: repoResults,
-    crossRepoImpacts: [], // TODO: implement cross-repo impact detection
+    crossRepoImpacts,
   };
 
   // Ensure output directory exists
@@ -209,13 +243,17 @@ async function analyzeRepo(
           // TODO: Implement MadgeAnalyzer
           break;
 
-        case 'graphql-inspector':
-          // TODO: Implement GraphQLAnalyzer
+        case 'graphql-inspector': {
+          const graphqlAnalyzer = new GraphQLAnalyzer(config, baseRef, headRef);
+          analyzerImpacts = await graphqlAnalyzer.analyze();
           break;
+        }
 
-        case 'go-ast':
-          // TODO: Implement GoAnalyzer
+        case 'go-ast': {
+          const goAnalyzer = new GoAnalyzer(config, baseRef, headRef);
+          analyzerImpacts = await goAnalyzer.analyze();
           break;
+        }
       }
 
       impacts.push(...analyzerImpacts);
@@ -285,6 +323,23 @@ function generateMarkdown(result: AnalysisResult): string {
     }
   }
 
+  // Add cross-repo impacts section
+  if (result.crossRepoImpacts.length > 0) {
+    md += '## 🔗 Cross-Repository Impacts\n\n';
+    md += 'These changes may affect other repositories:\n\n';
+
+    for (const crossImpact of result.crossRepoImpacts) {
+      md += `### ${crossImpact.sourceRepo} → ${crossImpact.targetRepo}\n\n`;
+      md += `- **Relation:** ${crossImpact.relation}\n`;
+      md += `- **Source:** ${crossImpact.sourceComponent}\n`;
+      md += `- **Potentially affected components:**\n`;
+      for (const target of crossImpact.targetComponents) {
+        md += `  - ${target}\n`;
+      }
+      md += '\n';
+    }
+  }
+
   return md;
 }
 
@@ -325,9 +380,94 @@ function generateGitHubComment(result: AnalysisResult): string {
   }
 
   comment += '</details>\n\n';
+
+  // Add cross-repo impacts section
+  if (result.crossRepoImpacts.length > 0) {
+    comment += `<details>\n<summary>🔗 Cross-Repository Impacts (${result.crossRepoImpacts.length})</summary>\n\n`;
+
+    for (const crossImpact of result.crossRepoImpacts) {
+      comment += `#### ${crossImpact.sourceRepo} → ${crossImpact.targetRepo}\n\n`;
+      comment += `- **Via:** ${crossImpact.relation}\n`;
+      comment += `- **Source:** ${crossImpact.sourceComponent}\n`;
+      comment += `- **May affect:** ${crossImpact.targetComponents.join(', ')}\n\n`;
+    }
+
+    comment += '</details>\n\n';
+  }
+
   comment += `---\n*Generated by [@codeculture/impact-analyzer](https://github.com/codeculturehq/impact-analyzer) v${VERSION}*\n`;
 
   return comment;
+}
+
+/**
+ * Run LLM enhancement on analysis results
+ */
+async function runEnhance(options: CLIEnhanceOptions & { secretsFilter?: boolean }): Promise<void> {
+  console.log('🤖 LLM Enhancement');
+  console.log('');
+
+  // Check input file exists
+  const inputPath = resolve(options.input);
+  if (!existsSync(inputPath)) {
+    console.error(`❌ Input file not found: ${inputPath}`);
+    process.exit(1);
+  }
+
+  // Read input JSON
+  console.log(`📄 Reading ${inputPath}`);
+  let result: AnalysisResult;
+  try {
+    const content = await readFile(inputPath, 'utf-8');
+    result = JSON.parse(content) as AnalysisResult;
+  } catch (error) {
+    console.error(`❌ Failed to parse input file: ${error}`);
+    process.exit(1);
+  }
+
+  // Count total impacts
+  const totalImpacts = result.repos.reduce((sum, repo) => sum + repo.impacts.length, 0);
+  console.log(`📊 Found ${totalImpacts} impacts to enhance`);
+
+  if (totalImpacts === 0) {
+    console.log('✅ No impacts to enhance');
+    return;
+  }
+
+  // Run LLM enhancement
+  console.log(`🔄 Enhancing with ${options.provider}...`);
+  console.log(`   Secrets filter: ${options.secretsFilter !== false ? 'enabled' : 'disabled'}`);
+
+  try {
+    const enhanced = await enhanceWithLLM(result, {
+      provider: options.provider as LLMProvider,
+      secretsFilter: options.secretsFilter !== false,
+    });
+
+    // Ensure output directory exists
+    const outputPath = resolve(options.output);
+    const outputDir = join(outputPath, '..');
+    if (!existsSync(outputDir)) {
+      await mkdir(outputDir, { recursive: true });
+    }
+
+    // Write enhanced output
+    await writeFile(outputPath, JSON.stringify(enhanced, null, 2));
+    console.log(`\n✅ Enhanced analysis saved to: ${outputPath}`);
+
+    // Summary
+    const hintsCount = enhanced.repos.reduce(
+      (sum, repo) => sum + repo.impacts.reduce(
+        (s, i) => s + (i.testHints?.length || 0),
+        0
+      ),
+      0
+    );
+    console.log(`   Generated ${hintsCount} test hints`);
+  } catch (error) {
+    console.error(`❌ Enhancement failed: ${error}`);
+    process.exit(1);
+  }
 }
 
 /**

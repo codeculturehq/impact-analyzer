@@ -97,3 +97,10 @@ export const ImpactConfigSchema = z
   );
 
 export type ValidatedImpactConfig = z.infer<typeof ImpactConfigSchema>;
+
+/**
+ * Helper function for defining impact config with type safety
+ */
+export function defineConfig(config: ValidatedImpactConfig): ValidatedImpactConfig {
+  return ImpactConfigSchema.parse(config);
+}
