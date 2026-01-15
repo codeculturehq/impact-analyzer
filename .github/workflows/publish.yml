@@ -26,8 +26,7 @@ permissions:
 jobs:
   test:
     name: Test
-    # TODO: Switch back to codeculture-org-runner when runner is online
-    runs-on: ubuntu-latest
+    runs-on: codeculture-org-runner
     steps:
       - uses: actions/checkout@v4
 
@@ -49,8 +48,7 @@ jobs:
   publish:
     name: Publish to GitHub Packages
     needs: test
-    # TODO: Switch back to codeculture-org-runner when runner is online
-    runs-on: ubuntu-latest
+    runs-on: codeculture-org-runner
     steps:
       - uses: actions/checkout@v4
         with:
