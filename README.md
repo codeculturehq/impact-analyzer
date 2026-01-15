@@ -107,6 +107,22 @@ Options:
   -p, --provider <name>    LLM provider: openai, claude, gemini (default: openai)
   -m, --model <name>       Model name (e.g., gpt-5.1-codex, claude-sonnet-4-20250514)
   --no-secrets-filter      Disable secrets filtering
+  --v2                     Use enhanced v2 analysis (recommended)
+  -c, --config <path>      Path to config file (required for --v2 diff extraction)
+```
+
+#### Enhanced v2 Mode
+
+The `--v2` flag enables enhanced analysis with:
+- **Git diff context**: Includes actual code changes for more accurate suggestions
+- **Risk levels**: Categorizes impacts as high/medium/low risk
+- **Review focus**: Highlights specific areas for code reviewers
+- **Executive summary**: Generates an overview of all changes
+- **Batched processing**: Groups related impacts for efficiency
+
+```bash
+# Recommended usage with v2
+impact enhance -i impact.json --v2 -c impact.config.yaml
 ```
 
 ### `impact validate`
@@ -176,6 +192,36 @@ The enhanced JSON includes `testHints` for each impacted component:
   }],
   "enhanced": true,
   "llmProvider": "openai"
+}
+```
+
+#### v2 Output Format
+
+When using `--v2`, the output includes additional fields:
+
+```json
+{
+  "repos": [{
+    "name": "frontend",
+    "impacts": [{
+      "component": "UserProfileComponent",
+      "file": "src/components/user-profile.ts",
+      "testHints": [
+        "Verify null handling for orderType field",
+        "Test document mapping with undefined values"
+      ],
+      "riskLevel": "medium",
+      "reviewFocus": [
+        "Ensure null checks are correctly implemented"
+      ],
+      "affectedFlows": [
+        "User profile editing flow"
+      ]
+    }]
+  }],
+  "enhanced": true,
+  "llmProvider": "openai",
+  "executiveSummary": "This update affects 37 components across frontend and API..."
 }
 ```
 

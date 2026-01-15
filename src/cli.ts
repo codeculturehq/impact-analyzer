@@ -7,6 +7,7 @@ import { existsSync } from 'node:fs';
 import { loadConfig, normalizeConfig, findConfig, ConfigLoadError, ConfigValidationError } from './config/index.js';
 import { AngularAnalyzer, GraphQLAnalyzer, GoAnalyzer, CrossRepoAnalyzer } from './analyzers/index.js';
 import { enhanceWithLLM } from './llm/index.js';
+import { enhanceWithLLMv2 } from './llm/enhancer-v2.js';
 import type {
   AnalysisResult,
   AnalyzeOptions,
@@ -71,7 +72,9 @@ function createProgram(): Command {
     .option('-p, --provider <provider>', 'LLM provider (openai, claude, gemini)', 'openai')
     .option('-m, --model <model>', 'Model name (e.g., gpt-5.1-codex, claude-sonnet-4-20250514)')
     .option('--no-secrets-filter', 'Disable secrets filtering')
-    .action(async (options: CLIEnhanceOptions & { secretsFilter?: boolean }) => {
+    .option('--v2', 'Use enhanced v2 analysis with git diff context and risk levels')
+    .option('-c, --config <path>', 'Path to config file (required for --v2 to extract diffs)')
+    .action(async (options: CLIEnhanceOptions & { secretsFilter?: boolean; v2?: boolean; config?: string }) => {
       await runEnhance(options);
     });
 
@@ -404,8 +407,8 @@ function generateGitHubComment(result: AnalysisResult): string {
 /**
  * Run LLM enhancement on analysis results
  */
-async function runEnhance(options: CLIEnhanceOptions & { secretsFilter?: boolean }): Promise<void> {
-  console.log('🤖 LLM Enhancement');
+async function runEnhance(options: CLIEnhanceOptions & { secretsFilter?: boolean; v2?: boolean; config?: string }): Promise<void> {
+  console.log('🤖 LLM Enhancement' + (options.v2 ? ' (v2)' : ''));
   console.log('');
 
   // Check input file exists
@@ -438,13 +441,41 @@ async function runEnhance(options: CLIEnhanceOptions & { secretsFilter?: boolean
   // Run LLM enhancement
   console.log(`🔄 Enhancing with ${options.provider}...`);
   console.log(`   Secrets filter: ${options.secretsFilter !== false ? 'enabled' : 'disabled'}`);
+  if (options.v2) {
+    console.log(`   Mode: v2 (with diff context, batching, risk levels)`);
+  }
 
   try {
-    const enhanced = await enhanceWithLLM(result, {
-      provider: options.provider as LLMProvider,
-      model: options.model,
-      secretsFilter: options.secretsFilter !== false,
-    });
+    let enhanced;
+
+    if (options.v2) {
+      // Load config for repo paths (needed to extract diffs)
+      let repoConfigs: Array<{ name: string; path: string }> | undefined;
+
+      if (options.config) {
+        const configPath = resolve(options.config);
+        if (existsSync(configPath)) {
+          const rawConfig = await loadConfig(configPath);
+          const config = normalizeConfig(rawConfig);
+          repoConfigs = config.repos.map(r => ({ name: r.name, path: r.path }));
+          console.log(`   Config: ${configPath} (${repoConfigs.length} repos)`);
+        }
+      }
+
+      enhanced = await enhanceWithLLMv2(result, {
+        provider: options.provider as LLMProvider,
+        model: options.model,
+        secretsFilter: options.secretsFilter !== false,
+        includeCodeDiff: true,
+        batchRelated: true,
+      }, repoConfigs);
+    } else {
+      enhanced = await enhanceWithLLM(result, {
+        provider: options.provider as LLMProvider,
+        model: options.model,
+        secretsFilter: options.secretsFilter !== false,
+      });
+    }
 
     // Ensure output directory exists
     const outputPath = resolve(options.output);
@@ -466,6 +497,26 @@ async function runEnhance(options: CLIEnhanceOptions & { secretsFilter?: boolean
       0
     );
     console.log(`   Generated ${hintsCount} test hints`);
+
+    // V2 specific summary
+    if (options.v2 && 'executiveSummary' in enhanced) {
+      const v2Enhanced = enhanced as { repos: Array<{ impacts: Array<{ riskLevel?: string }> }>; executiveSummary?: string; apiCallCount?: number };
+      const riskCounts = { high: 0, medium: 0, low: 0 };
+      for (const repo of v2Enhanced.repos) {
+        for (const impact of repo.impacts) {
+          const level = impact.riskLevel as 'high' | 'medium' | 'low' || 'medium';
+          riskCounts[level]++;
+        }
+      }
+      console.log(`   Risk distribution: 🔴 ${riskCounts.high} high | 🟡 ${riskCounts.medium} medium | 🟢 ${riskCounts.low} low`);
+      if (v2Enhanced.apiCallCount) {
+        console.log(`   API calls: ${v2Enhanced.apiCallCount}`);
+      }
+      if (v2Enhanced.executiveSummary) {
+        console.log(`\n📋 Executive Summary:`);
+        console.log(`   ${v2Enhanced.executiveSummary}`);
+      }
+    }
   } catch (error) {
     console.error(`❌ Enhancement failed: ${error}`);
     process.exit(1);

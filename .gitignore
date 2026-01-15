@@ -30,3 +30,13 @@ npm-debug.log*
 .tmp/
 tmp/
 *.tmp
+
+# Test output directories
+test-*/
+impact-output/
+
+# Local tooling
+.claude/
+.tldr/
+.tldrignore
+thoughts/
